@@ -1,3 +1,4 @@
+use rand::Rng;
 use roguelike::objects::{Object, Rect, Tile};
 use std::cmp;
 use tcod::colors;
@@ -18,6 +19,10 @@ const COLOR_DARK_GROUND: Color = Color {
     b: 150,
 };
 
+const ROOM_MAX_SIZE: i32 = 10;
+const ROOM_MIN_SIZE: i32 = 10;
+const MAX_ROOMS: i32 = 30;
+
 const LIMIT_FPS: i32 = 20;
 
 // type synonyms
@@ -34,16 +39,39 @@ fn get_root() -> Root {
 }
 
 // make map
-fn make_map() -> Map {
+fn make_map() -> (Map, (i32, i32)) {
+    let mut starting_position = (0, 0);
     let mut map = vec![vec![Tile::wall(); MAP_HEIGHT as usize]; MAP_WIDTH as usize];
+    let mut rooms = vec![];
 
-    let room1 = Rect::new(20, 15, 10, 15);
-    let room2 = Rect::new(50, 15, 10, 15);
+    for _ in 0..MAX_ROOMS {
+        // random width and height
+        let w = rand::thread_rng().gen_range(ROOM_MIN_SIZE, ROOM_MAX_SIZE + 1);
+        let h = rand::thread_rng().gen_range(ROOM_MIN_SIZE, ROOM_MAX_SIZE + 1);
 
-    create_room(room1, &mut map);
-    create_room(room2, &mut map);
-    create_h_tunnel(25, 55, 23, &mut map);
-    map
+        // random position without going out of the boundaries of the map
+        let x = rand::thread_rng().gen_range(0, MAP_WIDTH - w);
+        let y = rand::thread_rng().gen_range(0, MAP_HEIGHT - h);
+
+        let new_room = Rect::new(x, y, w, h);
+
+        let failed = rooms
+            .iter()
+            .any(|other_room| new_room.intersects_with(other_room));
+
+        if !failed {
+            // store center values
+            let (new_x, new_y) = new_room.center();
+
+            // if there are no intersections this room is valid and we can 'carve it'
+            create_room(new_room, &mut map);
+            if rooms.is_empty() {
+                // first room handled here to get the starting position of the person
+                starting_position = (new_x, new_y);
+            }
+        }
+    }
+    (map, starting_position)
 }
 
 // place room on map
@@ -125,17 +153,17 @@ fn main() {
     let mut root = get_root();
     let mut con = Offscreen::new(MAP_WIDTH, MAP_HEIGHT);
 
+    // generate map
+    let (map, (player_x, player_y)) = make_map();
+
     // initialise the objects
-    let player = Object::new(25, 23, '@', colors::WHITE);
+    let player = Object::new(player_x, player_y, '@', colors::WHITE);
     let mut objects = [player];
 
     // main loop
     while !root.window_closed() {
         // clear the screen
         con.clear();
-
-        // generate map
-        let map = make_map();
 
         // render the whole thing
         render_all(&mut root, &mut con, &objects, &map);

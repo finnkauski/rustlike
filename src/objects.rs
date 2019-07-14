@@ -64,4 +64,17 @@ impl Rect {
             y2: y + h,
         }
     }
+
+    pub fn center(&self) -> (i32, i32) {
+        let cx = (self.x1 + self.x2) / 2;
+        let cy = (self.y1 + self.y2) / 2;
+        (cx, cy)
+    }
+
+    pub fn intersects_with(&self, other: &Rect) -> bool {
+        (self.x1 <= other.x2)
+            && (self.x2 >= other.x1)
+            && (self.y1 <= other.y2)
+            && (self.y2 >= other.y1)
+    }
 }
