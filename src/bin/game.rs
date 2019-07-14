@@ -8,6 +8,9 @@ use tcod::map::{FovAlgorithm, Map as FovMap};
 
 // constants
 
+// player index in the object list
+const PLAYER: usize = 0;
+
 // screen settings
 const SCREEN_WIDTH: i32 = 80;
 const SCREEN_HEIGHT: i32 = 50;
@@ -36,6 +39,8 @@ const ROOM_MAX_SIZE: i32 = 10;
 const ROOM_MIN_SIZE: i32 = 10;
 const MAX_ROOMS: i32 = 40;
 
+// monster params
+const MAX_ROOM_MONSTERS: i32 = 3;
 // fps
 const LIMIT_FPS: i32 = 20;
 
@@ -46,6 +51,14 @@ const TORCH_RADIUS: i32 = 10;
 
 // type synonyms
 type Map = Vec<Vec<Tile>>;
+
+// enums
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum PlayerAction {
+    TookTurn,
+    DidntTakeTurn,
+    Exit,
+}
 
 // initialise the root window
 fn get_root() -> Root {
@@ -58,7 +71,7 @@ fn get_root() -> Root {
 }
 
 // make map
-fn make_map() -> (Map, (i32, i32)) {
+fn make_map(objects: &mut Vec<Object>) -> (Map, (i32, i32)) {
     let mut starting_position = (0, 0);
     let mut map = vec![vec![Tile::wall(); MAP_HEIGHT as usize]; MAP_WIDTH as usize];
     let mut rooms = vec![];
@@ -84,6 +97,7 @@ fn make_map() -> (Map, (i32, i32)) {
 
             // if there are no intersections this room is valid and we can 'carve it'
             create_room(&new_room, &mut map);
+            place_objects(&new_room, objects);
 
             if rooms.is_empty() {
                 // first room handled here to get the starting position of the person
@@ -127,6 +141,43 @@ fn create_v_tunnel(y1: i32, y2: i32, x: i32, map: &mut Map) {
     }
 }
 
+// place objects on map
+fn is_blocked(x: i32, y: i32, map: &Map, objects: &[Object]) -> bool {
+    if map[x as usize][y as usize].blocked {
+        return true;
+    }
+
+    objects.iter().any(|obj| obj.blocks && obj.pos() == (x, y))
+}
+
+pub fn move_by(id: usize, dx: i32, dy: i32, map: &Map, objects: &mut [Object]) {
+    // move the object by a given amount
+    let (x, y) = objects[id].pos();
+    if !is_blocked(x + dx, y + dy, map, objects) {
+        objects[id].set_pos(x + dx, y + dy);
+    }
+}
+
+fn place_objects(room: &Rect, objects: &mut Vec<Object>) {
+    // choose random number of monsters
+    let num_monsters = rand::thread_rng().gen_range(0, MAX_ROOM_MONSTERS + 1);
+
+    for _ in 0..num_monsters {
+        // choose location
+        let x = rand::thread_rng().gen_range(room.x1 + 1, room.x2);
+        let y = rand::thread_rng().gen_range(room.y1 + 1, room.y2);
+
+        let mut monster = if rand::random::<f32>() < 0.8 {
+            // chance of getting an orc
+            Object::new(x, y, 'o', colors::DESATURATED_GREEN, "orc", true, true)
+        } else {
+            Object::new(x, y, 'T', colors::DARKER_GREEN, "troll", true, true)
+        };
+        monster.alive = true;
+        objects.push(monster);
+    }
+}
+
 // rendering system
 fn render_all(
     root: &mut Root,
@@ -137,7 +188,7 @@ fn render_all(
     fov_recompute: bool,
 ) {
     if fov_recompute {
-        let player = &objects[0];
+        let player = &objects[PLAYER];
         fov_map.compute_fov(player.x, player.y, TORCH_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO);
     }
     // draw the map first
@@ -176,31 +227,48 @@ fn render_all(
 }
 
 // handle the keypresses
-fn handle_keys(root: &mut Root, player: &mut Object) -> bool {
+fn handle_keys(root: &mut Root, map: &Map, objects: &mut [Object]) -> PlayerAction {
     use tcod::input::{Key, KeyCode::*};
+    use PlayerAction::*;
 
     let key = root.wait_for_keypress(true);
-    match key {
-        Key { code: Up, .. } => player.move_by(0, -1),
-        Key { code: Down, .. } => player.move_by(0, 1),
-        Key { code: Left, .. } => player.move_by(-1, 0),
-        Key { code: Right, .. } => player.move_by(1, 0),
+    let player_alive = true;
 
-        Key {
-            code: Enter,
-            alt: true,
-            ..
-        } => {
-            let fullscreen = root.is_fullscreen();
-            root.set_fullscreen(!fullscreen);
+    match (key, player_alive) {
+        (Key { code: Up, .. }, true) => {
+            move_by(PLAYER, 0, -1, map, objects);
+            TookTurn
+        }
+        (Key { code: Down, .. }, true) => {
+            move_by(PLAYER, 0, 1, map, objects);
+            TookTurn
+        }
+        (Key { code: Left, .. }, true) => {
+            move_by(PLAYER, -1, 0, map, objects);
+            TookTurn
+        }
+        (Key { code: Right, .. }, true) => {
+            move_by(PLAYER, 1, 0, map, objects);
+            TookTurn
         }
 
-        Key { code: Escape, .. } => return true,
+        (
+            Key {
+                code: Enter,
+                alt: true,
+                ..
+            },
+            _,
+        ) => {
+            let fullscreen = root.is_fullscreen();
+            root.set_fullscreen(!fullscreen);
+            DidntTakeTurn
+        }
 
-        _ => {}
+        (Key { code: Escape, .. }, _) => Exit,
+
+        _ => DidntTakeTurn,
     }
-
-    false
 }
 
 fn main() {
@@ -210,15 +278,23 @@ fn main() {
     let mut root = get_root();
     let mut con = Offscreen::new(MAP_WIDTH, MAP_HEIGHT);
 
-    // generate map
-    let (mut map, (player_x, player_y)) = make_map();
-
     // initialise the objects
     let mut previous_player_position = (-1, -1); // need this to make sure we recompute the fov map if player moves
 
     // instantiate a player
-    let player = Object::new(player_x, player_y, '@', colors::WHITE);
-    let mut objects = [player];
+    let player = Object::new(
+        SCREEN_WIDTH / 2,
+        SCREEN_HEIGHT / 2,
+        '@',
+        colors::WHITE,
+        "player",
+        true,
+        true,
+    );
+    let mut objects = vec![player];
+
+    // generate map
+    let (mut map, (player_x, player_y)) = make_map(&mut objects);
 
     // initialise the fov map once the regular map is generated
     let mut fov_map = FovMap::new(MAP_WIDTH, MAP_HEIGHT);
@@ -239,7 +315,7 @@ fn main() {
         con.clear();
 
         // render the whole thing
-        let fov_recompute = previous_player_position != (objects[0].x, objects[0].y);
+        let fov_recompute = previous_player_position != (objects[PLAYER].x, objects[PLAYER].y);
         render_all(
             &mut root,
             &mut con,
@@ -254,11 +330,11 @@ fn main() {
 
         // record current position for future check to recompute fov
         previous_player_position = (player.x, player.y);
-
         // key handler
-        let exit = handle_keys(&mut root, player);
-        if exit {
+        let action = handle_keys(&mut root, &map, &mut objects);
+        if action == PlayerAction::Exit {
             break;
         }
+        println!("{:?}", action);
     }
 }

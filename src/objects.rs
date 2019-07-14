@@ -6,23 +6,48 @@ pub struct Object {
     pub y: i32,
     pub char: char,
     pub color: Color,
+
+    // details
+    pub name: String,
+    pub blocks: bool,
+    pub alive: bool,
 }
 
 impl Object {
-    pub fn new(x: i32, y: i32, char: char, color: Color) -> Self {
-        Object { x, y, char, color }
-    }
-
-    pub fn move_by(&mut self, dx: i32, dy: i32) {
-        // move the object by a given amount
-        self.x += dx;
-        self.y += dy;
+    pub fn new(
+        x: i32,
+        y: i32,
+        char: char,
+        color: Color,
+        name: &str,
+        blocks: bool,
+        alive: bool,
+    ) -> Self {
+        Object {
+            x: x,
+            y: y,
+            char: char,
+            color: color,
+            name: name.to_owned(),
+            blocks: blocks,
+            alive: alive,
+        }
     }
 
     /// set the color and then draw the character that reperesents this object at its position
     pub fn draw(&self, con: &mut Console) {
         con.set_default_foreground(self.color);
         con.put_char(self.x, self.y, self.char, BackgroundFlag::None);
+    }
+
+    // position getters and setters
+    pub fn pos(&self) -> (i32, i32) {
+        (self.x, self.y)
+    }
+
+    pub fn set_pos(&mut self, x: i32, y: i32) {
+        self.x = x;
+        self.y = y;
     }
 }
 
