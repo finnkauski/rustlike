@@ -1,4 +1,5 @@
-use roguelike::objects::{Object, Tile};
+use roguelike::objects::{Object, Rect, Tile};
+use std::cmp;
 use tcod::colors;
 use tcod::colors::Color;
 use tcod::console::*;
@@ -19,7 +20,7 @@ const COLOR_DARK_GROUND: Color = Color {
 
 const LIMIT_FPS: i32 = 20;
 
-// type synonims
+// type synonyms
 type Map = Vec<Vec<Tile>>;
 
 // initialise the root window
@@ -34,11 +35,36 @@ fn get_root() -> Root {
 
 // make map
 fn make_map() -> Map {
-    let mut map = vec![vec![Tile::empty(); MAP_HEIGHT as usize]; MAP_WIDTH as usize];
-    // TODO: remove, just here for tests
-    map[30][22] = Tile::wall();
-    map[50][22] = Tile::wall();
+    let mut map = vec![vec![Tile::wall(); MAP_HEIGHT as usize]; MAP_WIDTH as usize];
+
+    let room1 = Rect::new(20, 15, 10, 15);
+    let room2 = Rect::new(50, 15, 10, 15);
+
+    create_room(room1, &mut map);
+    create_room(room2, &mut map);
+    create_h_tunnel(25, 55, 23, &mut map);
     map
+}
+
+// place room on map
+fn create_room(room: Rect, map: &mut Map) {
+    for x in (room.x1 + 1)..room.x2 {
+        for y in (room.y1 + 1)..room.y2 {
+            map[x as usize][y as usize] = Tile::empty();
+        }
+    }
+}
+
+fn create_h_tunnel(x1: i32, x2: i32, y: i32, map: &mut Map) {
+    for x in cmp::min(x1, x2)..(cmp::max(x1, x2) + 1) {
+        map[x as usize][y as usize] = Tile::empty();
+    }
+}
+
+fn create_v_tunnel(y1: i32, y2: i32, x: i32, map: &mut Map) {
+    for y in cmp::min(y1, y2)..(cmp::max(y1, y2) + 1) {
+        map[x as usize][y as usize] = Tile::empty();
+    }
 }
 
 // rendering system
@@ -65,7 +91,7 @@ fn render_all(root: &mut Root, con: &mut Offscreen, objects: &[Object], map: &Ma
 }
 
 // handle the keypresses
-pub fn handle_keys(root: &mut Root, player: &mut Object) -> bool {
+fn handle_keys(root: &mut Root, player: &mut Object) -> bool {
     use tcod::input::{Key, KeyCode::*};
 
     let key = root.wait_for_keypress(true);
@@ -100,9 +126,8 @@ fn main() {
     let mut con = Offscreen::new(MAP_WIDTH, MAP_HEIGHT);
 
     // initialise the objects
-    let player = Object::new(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, '@', colors::WHITE);
-    let npc = Object::new(SCREEN_WIDTH / 2 - 5, SCREEN_HEIGHT / 2, '@', colors::YELLOW);
-    let mut objects = [player, npc];
+    let player = Object::new(25, 23, '@', colors::WHITE);
+    let mut objects = [player];
 
     // main loop
     while !root.window_closed() {
