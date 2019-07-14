@@ -1,0 +1,15 @@
+#+TITLE: Design document
+
+* Game Loops
+** Core
+The core loop for this game will be this:
+- Run around
+- Get powerups
+- Fight monsters
+** Secondary
+- You control 2 players at the same time
+- You have to pick which upgrades you give to which character
+- You might want to have 2 separate controls for either character
+** Tertiary
+- You progress through levels when you defeat all monsters
+- Goal is to get higher score and progress as far as possible
