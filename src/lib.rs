@@ -160,11 +160,14 @@ pub fn player_move_or_attack(dx: i32, dy: i32, map: &Map, objects: &mut [Object]
     let x = objects[PLAYER].x + dx;
     let y = objects[PLAYER].y + dy;
     // see if anything is in these coordinates
-    let target_id = objects.iter().position(|object| object.pos() == (x, y));
+    let target_id = objects
+        .iter()
+        .position(|object| object.fighter.is_some() && object.pos() == (x, y));
     // attack if target found, otherwise move
     match target_id {
         Some(target_id) => {
-            println!("The {} laughs at your efforts!", objects[target_id].name);
+            let (player, target) = mut_two(PLAYER, target_id, objects);
+            player.attack(target);
         }
         None => move_by(PLAYER, dx, dy, map, objects),
     }
@@ -264,8 +267,15 @@ pub fn render_all(
         }
     }
 
+    // create a new vector to sort so we don't mess up the indices in the main one
+    let mut to_draw: Vec<_> = objects
+        .iter()
+        .filter(|o| fov_map.is_in_fov(o.x, o.y))
+        .collect();
+    // sort so that non-blocking objects come first
+    to_draw.sort_by(|o1, o2| o1.blocks.cmp(&o2.blocks));
     // draw all objects in a list
-    for object in objects {
+    for object in &to_draw {
         if fov_map.is_in_fov(object.x, object.y) {
             object.draw(con);
         }
